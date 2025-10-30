@@ -21,9 +21,10 @@ export function HourBank({ records, config }: HourBankProps) {
     
     // Calcular minutos trabalhados por dia
     let totalWorkedMinutes = 0
+    let totalExpectedMinutes = 0
     let daysWorked = 0
     
-    Object.values(recordsByDate).forEach(dayRecords => {
+    Object.entries(recordsByDate).forEach(([date, dayRecords]) => {
       // Somar todos os períodos do dia (manhã + tarde)
       const dayMinutes = dayRecords
         .filter(r => r.totalMinutes !== undefined)
@@ -33,18 +34,24 @@ export function HourBank({ records, config }: HourBankProps) {
       if (dayMinutes > 0) {
         totalWorkedMinutes += dayMinutes
         daysWorked++
+        
+        // Verificar se é sexta-feira
+        const [day, month, year] = date.split('/').map(Number)
+        const dateObj = new Date(year, month - 1, day)
+        const isFriday = dateObj.getDay() === 5
+        
+        // Se for sexta, considerar 8h, senão usar a configuração
+        const expectedHours = isFriday ? 8 : config.dailyHours
+        totalExpectedMinutes += expectedHours * 60
       }
     })
     
-    // Minutos que deveria ter trabalhado
-    const expectedMinutes = daysWorked * config.dailyHours * 60
-    
     // Diferença (banco de horas em minutos)
-    const bankMinutes = totalWorkedMinutes - expectedMinutes
+    const bankMinutes = totalWorkedMinutes - totalExpectedMinutes
     
     return {
       totalWorkedMinutes,
-      expectedMinutes,
+      expectedMinutes: totalExpectedMinutes,
       bankMinutes,
       daysWorked,
     }

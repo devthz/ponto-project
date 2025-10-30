@@ -1,14 +1,19 @@
 'use client'
 
-import { Calendar, Clock, Trash2, AlertCircle } from 'lucide-react'
+import { useState } from 'react'
+import { Calendar, Clock, Trash2, AlertCircle, Edit2 } from 'lucide-react'
 import type { TimeRecord } from '@/app/page'
+import { EditRecordModal } from './EditRecordModal'
 
 interface TimeHistoryProps {
   records: TimeRecord[]
   onDelete: (id: string) => void
+  onEdit: (id: string, clockIn: string, clockOut?: string) => Promise<void>
+  showTitle?: boolean
 }
 
-export function TimeHistory({ records, onDelete }: TimeHistoryProps) {
+export function TimeHistory({ records, onDelete, onEdit, showTitle = true }: TimeHistoryProps) {
+  const [editingRecord, setEditingRecord] = useState<TimeRecord | null>(null)
   const formatMinutesToHours = (minutes: number) => {
     const hours = Math.floor(minutes / 60)
     const mins = minutes % 60
@@ -32,10 +37,12 @@ export function TimeHistory({ records, onDelete }: TimeHistoryProps) {
   })
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
-      <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 dark:text-white mb-4">
-        Histórico de Registros
-      </h2>
+    <div className={showTitle ? "bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6" : ""}>
+      {showTitle && (
+        <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 dark:text-white mb-4">
+          Histórico de Registros
+        </h2>
+      )}
 
       {records.length === 0 ? (
         <div className="text-center py-8 sm:py-12">
@@ -52,6 +59,11 @@ export function TimeHistory({ records, onDelete }: TimeHistoryProps) {
               .filter(r => r.totalMinutes !== undefined)
               .reduce((sum, r) => sum + (r.totalMinutes || 0), 0)
             const hasIncomplete = dayRecords.some(r => !r.clockOut)
+            
+            // Verificar se é sexta-feira
+            const [day, month, year] = date.split('/').map(Number)
+            const dateObj = new Date(year, month - 1, day)
+            const isFriday = dateObj.getDay() === 5
 
             return (
               <div
@@ -63,11 +75,16 @@ export function TimeHistory({ records, onDelete }: TimeHistoryProps) {
                 }`}
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Calendar className="w-5 h-5 text-gray-500 dark:text-gray-400" />
                     <span className="font-bold text-gray-800 dark:text-white text-base sm:text-lg">
                       {date}
                     </span>
+                    {isFriday && (
+                      <span className="px-2 py-1 bg-purple-200 dark:bg-purple-700 text-purple-800 dark:text-purple-200 text-xs rounded-full font-semibold">
+                        Sexta (8h)
+                      </span>
+                    )}
                     {hasIncomplete && (
                       <span className="px-2 py-1 bg-yellow-200 dark:bg-yellow-700 text-yellow-800 dark:text-yellow-200 text-xs rounded-full font-semibold">
                         Em andamento
@@ -85,7 +102,10 @@ export function TimeHistory({ records, onDelete }: TimeHistoryProps) {
                 </div>
 
                 <div className="space-y-2">
-                  {dayRecords.map((record, index) => (
+                  {dayRecords.sort((a, b) => {
+                    // Ordenar por hora de entrada (clockIn)
+                    return a.clockIn.localeCompare(b.clockIn)
+                  }).map((record, index) => (
                     <div
                       key={record.id}
                       className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-white dark:bg-gray-800 p-2 sm:p-3 rounded border border-gray-200 dark:border-gray-700"
@@ -119,17 +139,26 @@ export function TimeHistory({ records, onDelete }: TimeHistoryProps) {
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          if (confirm('Tem certeza que deseja excluir este período?')) {
-                            onDelete(record.id)
-                          }
-                        }}
-                        className="w-full sm:w-auto px-2 py-1 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded transition duration-200 text-xs font-semibold flex items-center justify-center gap-1"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span className="hidden sm:inline">Excluir</span>
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditingRecord(record)}
+                          className="w-full sm:w-auto px-2 py-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded transition duration-200 text-xs font-semibold flex items-center justify-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span className="hidden sm:inline">Editar</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Tem certeza que deseja excluir este período?')) {
+                              onDelete(record.id)
+                            }
+                          }}
+                          className="w-full sm:w-auto px-2 py-1 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded transition duration-200 text-xs font-semibold flex items-center justify-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span className="hidden sm:inline">Excluir</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -137,6 +166,17 @@ export function TimeHistory({ records, onDelete }: TimeHistoryProps) {
             )
           })}
         </div>
+      )}
+
+      {editingRecord && (
+        <EditRecordModal
+          record={editingRecord}
+          onSave={async (id, clockIn, clockOut) => {
+            await onEdit(id, clockIn, clockOut)
+            setEditingRecord(null)
+          }}
+          onClose={() => setEditingRecord(null)}
+        />
       )}
     </div>
   )

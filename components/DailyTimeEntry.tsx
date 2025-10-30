@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Clock, LogIn, LogOut, Coffee, X } from 'lucide-react'
+import { Clock, LogIn, LogOut, Coffee, X, Loader2 } from 'lucide-react'
 import type { TimeRecord } from '@/app/page'
 
 interface DailyTimeEntryProps {
@@ -18,6 +18,7 @@ interface DailyEntry {
 
 export function DailyTimeEntry({ onSaveDay, existingRecords }: DailyTimeEntryProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [times, setTimes] = useState<DailyEntry>({
     entry: '',
@@ -34,7 +35,7 @@ export function DailyTimeEntry({ onSaveDay, existingRecords }: DailyTimeEntryPro
     })
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!times.entry) {
@@ -42,49 +43,47 @@ export function DailyTimeEntry({ onSaveDay, existingRecords }: DailyTimeEntryPro
       return
     }
 
-    const records: Partial<TimeRecord>[] = []
-    const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
-    })
+    setIsSaving(true)
 
-    // Entrada
-    if (times.entry) {
+    try {
+      const records: Partial<TimeRecord>[] = []
+      const formattedDate = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+      })
+
+      const timestamp = Date.now()
+
+      // Período 1 (Manhã): Entrada até Saída para Almoço
       records.push({
-        id: `${Date.now()}-entry`,
+        id: `${timestamp}-morning`,
         date: formattedDate,
         clockIn: times.entry,
         clockOut: times.lunchOut || undefined,
         totalMinutes: times.lunchOut ? calculateMinutes(times.entry, times.lunchOut) : undefined,
       })
-    }
 
-    // Volta do almoço e saída
-    if (times.lunchIn) {
-      records.push({
-        id: `${Date.now()}-lunch`,
-        date: formattedDate,
-        clockIn: times.lunchIn,
-        clockOut: times.exit || undefined,
-        totalMinutes: times.exit ? calculateMinutes(times.lunchIn, times.exit) : undefined,
-      })
-    } else if (times.exit && times.lunchOut) {
-      // Se não tem volta do almoço mas tem saída almoço e saída final
-      records.push({
-        id: `${Date.now()}-exit`,
-        date: formattedDate,
-        clockIn: times.lunchOut,
-        clockOut: times.exit,
-        totalMinutes: calculateMinutes(times.lunchOut, times.exit),
-      })
-    }
+      // Período 2 (Tarde): Volta do Almoço até Saída Final
+      // Só cria o segundo registro se houver volta do almoço OU saída final
+      if (times.lunchIn || times.exit) {
+        records.push({
+          id: `${timestamp}-afternoon`,
+          date: formattedDate,
+          clockIn: times.lunchIn || times.lunchOut || times.entry, // Fallback se não informar volta
+          clockOut: times.exit || undefined,
+          totalMinutes: times.exit && times.lunchIn ? calculateMinutes(times.lunchIn, times.exit) : undefined,
+        })
+      }
 
-    onSaveDay(records)
-    
-    // Limpar e fechar
-    setTimes({ entry: '', lunchOut: '', lunchIn: '', exit: '' })
-    setIsOpen(false)
+      await onSaveDay(records)
+      
+      // Limpar e fechar
+      setTimes({ entry: '', lunchOut: '', lunchIn: '', exit: '' })
+      setIsOpen(false)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const calculateMinutes = (start: string, end: string): number => {
@@ -107,10 +106,13 @@ export function DailyTimeEntry({ onSaveDay, existingRecords }: DailyTimeEntryPro
           </div>
           <button
             onClick={() => setIsOpen(!isOpen)}
+            disabled={isSaving}
             className={`px-3 py-2 sm:px-4 rounded-lg font-semibold transition duration-200 text-sm sm:text-base ${
-              isOpen 
-                ? 'bg-gray-500 hover:bg-gray-600 text-white'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              isSaving
+                ? 'bg-gray-400 cursor-not-allowed'
+                : isOpen 
+                  ? 'bg-gray-500 hover:bg-gray-600 text-white'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
             }`}
           >
             {isOpen ? <><X className="w-4 h-4 sm:mr-2 inline" /><span className="hidden sm:inline">Fechar</span></> : '+ Adicionar'}
@@ -197,9 +199,21 @@ export function DailyTimeEntry({ onSaveDay, existingRecords }: DailyTimeEntryPro
 
             <button
               type="submit"
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200"
+              disabled={isSaving}
+              className={`w-full font-semibold py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2 ${
+                isSaving 
+                  ? 'bg-gray-400 cursor-not-allowed' 
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              }`}
             >
-              Salvar Registro
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Salvar Registro'
+              )}
             </button>
           </form>
         )}
